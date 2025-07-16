@@ -1,0 +1,166 @@
+# AWS Serverless Application Model (SAM) template for Aya-Cleaning POC
+# This template defines the backend API, Lambda function, DynamoDB table,
+# and frontend hosting resources.
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  aya-cleaning
+
+  SAM Template for a serverless cleaning platform POC,
+  inspired by the Uber ride model.
+
+Globals:
+  Function:
+    Timeout: 30 # Default timeout for Lambda functions
+    MemorySize: 128 # Default memory for Lambda functions, optimize later
+    Runtime: nodejs18.x # Node.js 18.x runtime for Lambda functions
+
+Resources:
+  # ------------------------------------------------------------
+  # Backend: API Gateway, Lambda, DynamoDB
+  # ------------------------------------------------------------
+
+  # DynamoDB Table for Service Requests
+  ServiceRequestsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: AyaCleaningServiceRequests
+      PrimaryKey:
+        Name: requestId
+        Type: String
+      ProvisionedThroughput: # Start with On-Demand for POC, can switch to Provisioned later
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        Project: AyaCleaning
+
+  # Lambda Function to create a new service request
+  CreateServiceRequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      CodeUri: backend/createServiceRequest/ # Path to your Lambda function code
+      Policies:
+        # Grant permissions to write to the ServiceRequestsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ServiceRequestsTable
+      Events:
+        CreateRequestApi:
+          Type: Api
+          Properties:
+            Path: /requests
+            Method: post
+            RestApiId: !Ref AyaCleaningApiGateway # Reference the API Gateway defined below
+      Tags:
+        Project: AyaCleaning
+
+  # API Gateway to expose the Lambda function
+  AyaCleaningApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod # API Gateway stage name
+      DefinitionBody:
+        swagger: '2.0'
+        info:
+          title: AyaCleaningAPI
+          version: '1.0'
+        paths:
+          /requests:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateServiceRequestFunction.Arn}/invocations"
+              responses: {}
+      Tags:
+        Project: AyaCleaning
+
+  # ------------------------------------------------------------
+  # Frontend: S3 Bucket for static hosting, CloudFront Distribution
+  # ------------------------------------------------------------
+
+  # S3 Bucket for Frontend Static Assets
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "aya-cleaning-frontend-${AWS::AccountId}-${AWS::Region}" # Unique bucket name
+      AccessControl: PublicRead # Allow public read for static website hosting
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html # For single-page applications
+      Tags:
+        Project: AyaCleaning
+
+  # S3 Bucket Policy to allow CloudFront access and public read
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Join ["", ["arn:aws:s3:::", !Ref FrontendBucket, "/*"]]
+          - Sid: CloudFrontAccess
+            Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+            Action: "s3:GetObject"
+            Resource: !Join ["", ["arn:aws:s3:::", !Ref FrontendBucket, "/*"]]
+      Tags:
+        Project: AyaCleaning
+
+  # CloudFront Origin Access Identity (OAI) to restrict S3 bucket access to CloudFront
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: OAI for AyaCleaning Frontend S3 Bucket
+      Tags:
+        Project: AyaCleaning
+
+  # CloudFront Distribution for global content delivery and caching
+  FrontendCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}"
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: ["GET", "HEAD", "OPTIONS"]
+          CachedMethods: ["GET", "HEAD", "OPTIONS"]
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          MinTTL: 0
+          DefaultTTL: 86400 # Cache for 24 hours
+          MaxTTL: 31536000 # Cache for 1 year
+        PriceClass: PriceClass_100 # Use lowest price class for POC
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true # Use CloudFront's default SSL certificate
+      Tags:
+        Project: AyaCleaning
+
+Outputs:
+  # Output the API Gateway endpoint URL for frontend configuration
+  ApiGatewayInvokeURL:
+    Description: "API Gateway Invoke URL for Aya-Cleaning Backend"
+    Value: !Sub "https://${AyaCleaningApiGateway.Outputs.ApiId}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+    Export:
+      Name: AyaCleaningApiGatewayURL
+
+  # Output the CloudFront Distribution Domain Name for frontend access
+  CloudFrontDistributionDomainName:
+    Description: "CloudFront Distribution Domain Name for Aya-Cleaning Frontend"
+    Value: !GetAtt FrontendCloudFrontDistribution.DomainName
+    Export:
+      Name: AyaCleaningFrontendURL

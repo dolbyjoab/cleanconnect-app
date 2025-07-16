@@ -1,0 +1,38 @@
+# AWS CodeBuild specification file for Aya-Cleaning CI/CD
+# This file defines the commands CodeBuild runs to build and package your application.
+
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "Installing dependencies..."
+      # Install npm for frontend and backend Lambda dependencies
+      - npm install -g npm@latest
+      - npm install --prefix frontend
+      - npm install --prefix backend/createServiceRequest
+
+  build:
+    commands:
+      - echo "Building frontend..."
+      # For a simple HTML/JS app, no complex build needed, just copy files.
+      # For React/Vue, this would be 'npm run build --prefix frontend'
+      - cp -R frontend/. dist/frontend/
+
+      - echo "Packaging backend Lambda function..."
+      # SAM CLI requires the 'sam' command. Ensure it's available in the CodeBuild environment.
+      # If not, you might need to install it: pip install aws-sam-cli
+      - sam build -t template.yaml --build-dir .aws-sam/build # Build SAM application locally
+
+  post_build:
+    commands:
+      - echo "Packaging SAM template for deployment..."
+      # The 'sam package' command uploads local artifacts to S3 and creates a new
+      # SAM template with S3 references.
+      - sam package --template-file .aws-sam/build/template.yaml --s3-bucket aya-cleaning-deployment-558123334551-us-east-2 --output-template-file packaged-template.yaml
+
+artifacts:
+  files:
+    - packaged-template.yaml # The SAM template ready for deployment
+    - dist/**/* # Include frontend assets for deployment to S3
+  base-directory: . # Artifacts are relative to the root of the source repository

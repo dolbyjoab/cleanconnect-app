@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aya-Cleaning Customer Portal POC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Request a Cleaning Service</h1>
+
+        <form id="serviceRequestForm" class="space-y-4">
+            <div>
+                <label for="customerName" class="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+                <input type="text" id="customerName" name="customerName" required
+                       class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+            </div>
+
+            <div>
+                <label for="serviceType" class="block text-sm font-medium text-gray-700 mb-1">Service Type</label>
+                <select id="serviceType" name="serviceType" required
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    <option value="">Select a service</option>
+                    <option value="Standard Cleaning">Standard Cleaning</option>
+                    <option value="Deep Cleaning">Deep Cleaning</option>
+                    <option value="Move-in/out Cleaning">Move-in/out Cleaning</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="location" class="block text-sm font-medium text-gray-700 mb-1">Location (Address)</label>
+                <input type="text" id="location" name="location" required
+                       class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+            </div>
+
+            <button type="submit"
+                    class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out">
+                Request Service
+            </button>
+        </form>
+
+        <div id="messageBox" class="mt-4 p-3 rounded-md text-sm text-center hidden"></div>
+    </div>
+
+    <script>
+        // IMPORTANT: Replace with your actual API Gateway Invoke URL after deployment
+        // You can get this from the 'Outputs' section of your SAM deployment.
+        const API_GATEWAY_URL = 'YOUR_API_GATEWAY_INVOKE_URL_HERE';
+
+        document.getElementById('serviceRequestForm').addEventListener('submit', async function(event) {
+            event.preventDefault(); // Prevent default form submission
+
+            const messageBox = document.getElementById('messageBox');
+            messageBox.classList.add('hidden'); // Hide previous messages
+            messageBox.classList.remove('bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800');
+
+            const customerName = document.getElementById('customerName').value;
+            const serviceType = document.getElementById('serviceType').value;
+            const location = document.getElementById('location').value;
+
+            const requestData = {
+                customerName: customerName,
+                serviceType: serviceType,
+                location: location
+            };
+
+            try {
+                const response = await fetch(`${API_GATEWAY_URL}/requests`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData),
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    messageBox.textContent = `Success! Request ID: ${result.requestId}. Status: ${result.status}`;
+                    messageBox.classList.add('bg-green-100', 'text-green-800');
+                    // Clear form fields on success
+                    document.getElementById('serviceRequestForm').reset();
+                } else {
+                    messageBox.textContent = `Error: ${result.message || 'Something went wrong.'}`;
+                    messageBox.classList.add('bg-red-100', 'text-red-800');
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+                messageBox.textContent = `Network error: ${error.message}. Please try again.`;
+                messageBox.classList.add('bg-red-100', 'text-red-800');
+            } finally {
+                messageBox.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

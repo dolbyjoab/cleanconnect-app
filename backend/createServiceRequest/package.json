@@ -1,0 +1,11 @@
+{
+  "name": "create-service-request",
+  "version": "1.0.0",
+  "description": "Lambda function to create a new cleaning service request",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.x",
+    "@aws-sdk/lib-dynamodb": "^3.x",
+    "uuid": "^9.0.0"
+  }
+}
